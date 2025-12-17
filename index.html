@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>원형 실시간 계획표</title>
+
+<style>
+:root{ --size:380px; }
+*{ box-sizing:border-box; }
+
+body{
+  margin:0;
+  min-height:100vh;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  font-family: system-ui, -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  background:#fff;
+}
+
+.wrap{ width:min(92vw,560px); padding:18px; }
+
+.card{
+  border:1px solid #eee;
+  border-radius:18px;
+  padding:16px;
+  box-shadow:0 6px 20px rgba(0,0,0,.06);
+}
+
+/* 상단 날짜/요일/시간 */
+.topBig{
+  display:flex;
+  justify-content:center;
+  align-items:baseline;
+  gap:10px;
+  padding:10px 12px;
+  border:1px solid #f2f2f2;
+  border-radius:16px;
+  margin-bottom:12px;
+}
+.topBig span{
+  font-weight:900;
+  font-size:28px;
+  color:#000;
+  font-variant-numeric: tabular-nums;
+}
+.weekday{ font-size:22px; }
+
+.dial{
+  width:var(--size);
+  height:var(--size);
+  margin:0 auto;
+}
+svg{ width:100%; height:100%; display:block; }
+</style>
+</head>
+
+<body>
+<div class="wrap">
+<div class="card">
+
+  <div class="topBig">
+    <span id="date">----</span>
+    <span id="dow" class="weekday">-</span>
+    <span id="time">--:--:--</span>
+  </div>
+
+  <div class="dial">
+    <svg viewBox="-6 -6 112 112">
+
+      <!-- 테두리 숫자 -->
+      <g id="hours"></g>
+
+      <!-- 배경 링 -->
+      <circle cx="50" cy="50" r="40"
+              fill="none" stroke="#e7e7e7" stroke-width="12"/>
+
+      <!-- 구간 띠 -->
+      <g id="arcs"></g>
+
+      <!-- 구간 텍스트 -->
+      <g id="labels"></g>
+
+      <!-- 바늘 -->
+      <line id="hand"
+            x1="50" y1="50" x2="50" y2="12"
+            stroke="#000" stroke-width="0.9"/>
+
+      <!-- 화살표 (중심 기준) -->
+      <polygon id="arrow"
+        points="0,-2 -1.6,1.6 1.6,1.6"
+        fill="#000"/>
+
+      <!-- ✅ 중앙 현재 구간 (맨 위 레이어) -->
+      <g id="centerInfo">
+        <circle cx="50" cy="50" r="17" fill="#fff" opacity="0.95"/>
+        <circle cx="50" cy="50" r="2.2" fill="#fff"/>
+        <text id="centerLabel"
+              x="50" y="46"
+              text-anchor="middle"
+              fill="#000"
+              font-size="5"
+              font-weight="900">-</text>
+        <text id="centerRange"
+              x="50" y="53"
+              text-anchor="middle"
+              fill="#000"
+              font-size="4.6"
+              font-weight="800"
+              style="font-variant-numeric:tabular-nums">--:--~--:--</text>
+      </g>
+
+    </svg>
+  </div>
+
+</div>
+</div>
+
+<script>
+const R_RING = 40;
+const NEEDLE_LEN = R_RING - 2; // 바늘/화살표 길이 살짝 짧게
+
+const SEGMENTS = [
+  {start:"04:15", end:"04:30", label:"기상", color:"#FF8A00"},
+  {start:"04:30", end:"06:30", label:"공부", color:"#5BC0FF"},
+  {start:"06:30", end:"09:30", label:"육아/가사", color:"#FFD400"},
+  {start:"09:30", end:"10:30", label:"공부", color:"#5BC0FF"},
+  {start:"10:30", end:"14:00", label:"육아/가사", color:"#FFD400"},
+  {start:"14:00", end:"15:30", label:"공부", color:"#5BC0FF"},
+  {start:"15:30", end:"20:30", label:"육아/가사", color:"#FFD400"},
+  {start:"20:30", end:"21:00", label:"취침준비", color:"#0B2A6F"},
+  {start:"21:00", end:"04:15", label:"수면", color:"#7A3FF2"},
+];
+
+const DOW=["일","월","화","수","목","금","토"];
+
+const arcsG=document.getElementById("arcs");
+const labelsG=document.getElementById("labels");
+const hoursG=document.getElementById("hours");
+const hand=document.getElementById("hand");
+const arrow=document.getElementById("arrow");
+const centerLabel=document.getElementById("centerLabel");
+const centerRange=document.getElementById("centerRange");
+
+function toMin(t){const[a,b]=t.split(":").map(Number);return a*60+b;}
+function pad(n){return String(n).padStart(2,"0");}
+function fracToRad(f){return f*2*Math.PI-Math.PI/2;}
+
+function arcPath(s,e){
+  let d=e-s; if(d<=0)d+=1;
+  const a0=fracToRad(s), a1=fracToRad(e);
+  const x0=50+R_RING*Math.cos(a0), y0=50+R_RING*Math.sin(a0);
+  const x1=50+R_RING*Math.cos(a1), y1=50+R_RING*Math.sin(a1);
+  return `M ${x0} ${y0} A ${R_RING} ${R_RING} 0 ${d>0.5?1:0} 1 ${x1} ${y1}`;
+}
+
+function build(){
+  hoursG.innerHTML=""; arcsG.innerHTML=""; labelsG.innerHTML="";
+
+  for(let h=1;h<=24;h++){
+    const f=(h%24)/24, a=fracToRad(f);
+    const x=50+50*Math.cos(a), y=50+50*Math.sin(a);
+    hoursG.innerHTML+=
+      `<text x="${x}" y="${y}" text-anchor="middle"
+        dominant-baseline="middle"
+        fill="#111" opacity=".7" font-size="3.2">${h}</text>`;
+  }
+
+  SEGMENTS.forEach(s=>{
+    const a=toMin(s.start)/1440, b=toMin(s.end)/1440;
+    if(b>a) arcsG.innerHTML+=`<path d="${arcPath(a,b)}" stroke="${s.color}" stroke-width="14" fill="none"/>`;
+    else{
+      arcsG.innerHTML+=`<path d="${arcPath(a,1)}" stroke="${s.color}" stroke-width="14" fill="none"/>`;
+      arcsG.innerHTML+=`<path d="${arcPath(0,b)}" stroke="${s.color}" stroke-width="14" fill="none"/>`;
+    }
+    const mid=((toMin(s.start)+(toMin(s.end)-toMin(s.start)+1440)%1440/2)%1440)/1440;
+    const ang=fracToRad(mid);
+    const x=50+40*Math.cos(ang), y=50+40*Math.sin(ang);
+    labelsG.innerHTML+=
+      `<text x="${x}" y="${y}" fill="#fff" stroke="rgba(0,0,0,.35)"
+        stroke-width=".35" paint-order="stroke fill"
+        font-size="4" font-weight="800"
+        text-anchor="middle" dominant-baseline="middle">${s.label}</text>`;
+  });
+}
+
+function update(){
+  const n=new Date();
+  document.getElementById("date").textContent=
+    `${n.getFullYear()}-${pad(n.getMonth()+1)}-${pad(n.getDate())}`;
+  document.getElementById("dow").textContent=`${DOW[n.getDay()]}요일`;
+  document.getElementById("time").textContent=
+    `${pad(n.getHours())}:${pad(n.getMinutes())}:${pad(n.getSeconds())}`;
+
+  const m=n.getHours()*60+n.getMinutes();
+  const idx=SEGMENTS.findIndex(s=>{
+    const a=toMin(s.start), b=toMin(s.end);
+    return b>a ? (m>=a&&m<b):(m>=a||m<b);
+  });
+
+  if(idx>=0){
+    centerLabel.textContent=SEGMENTS[idx].label;
+    centerRange.textContent=`${SEGMENTS[idx].start}~${SEGMENTS[idx].end}`;
+  }
+
+  const frac=(n.getHours()*3600+n.getMinutes()*60+n.getSeconds())/86400;
+  const ang=fracToRad(frac);
+  const deg=ang*180/Math.PI+90;
+
+  const x=50+NEEDLE_LEN*Math.cos(ang);
+  const y=50+NEEDLE_LEN*Math.sin(ang);
+
+  hand.setAttribute("x2",x);
+  hand.setAttribute("y2",y);
+
+  arrow.setAttribute(
+    "transform",
+    `translate(${x} ${y}) rotate(${deg})`
+  );
+
+  requestAnimationFrame(update);
+}
+
+build();
+update();
+</script>
+</body>
+</html>
