@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>원형 실시간 계획표</title>
+
+<style>
+:root{ --size: min(90vw, 380px); }
+*{ box-sizing:border-box; }
+
+body{
+  margin:0;
+  min-height:100vh;
+  display:flex;
+  justify-content:center;
+  align-items:flex-start;
+  font-family: system-ui, -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  background:#fff;
+  padding-top: env(safe-area-inset-top);
+}
+
+.wrap{ width:100%; max-width:560px; padding:16px; }
+
+.card{
+  border:1px solid #eee;
+  border-radius:18px;
+  padding:14px;
+  box-shadow:0 6px 20px rgba(0,0,0,.06);
+}
+
+/* 상단 날짜+시간 */
+.topBig{ display:flex; justify-content:center; align-items:center; margin-bottom:12px; }
+.topBig span{
+  font-weight:900;
+  font-size:clamp(18px, 5vw, 28px);
+  color:#000;
+  font-variant-numeric: tabular-nums;
+  white-space:nowrap;
+  text-align:center;
+}
+
+/* 원형 */
+.dial{ width:var(--size); height:var(--size); margin:0 auto; }
+svg{ width:100%; height:100%; display:block; }
+
+/* 타이머 */
+.timerBox{
+  margin-top:14px;
+  border:1px solid #f0f0f0;
+  border-radius:16px;
+  padding:12px;
+  display:grid;
+  gap:10px;
+}
+
+.timerTop{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.timerTitle{ font-weight:900; font-size:16px; color:#111; }
+
+.timerDisplay{
+  font-weight:900;
+  font-size:28px;
+  font-variant-numeric: tabular-nums;
+  color:#000;
+}
+
+.progress{
+  height:10px;
+  border-radius:999px;
+  background:#f1f1f1;
+  overflow:hidden;
+}
+.progress > div{
+  height:100%;
+  width:0%;
+  background:#000;
+}
+
+.timerControls{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  align-items:center;
+  justify-content:space-between;
+}
+
+.timerLeft{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+
+.field{
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+.field label{
+  font-size:14px;
+  color:#333;
+  font-weight:800;
+}
+.field input{
+  width:74px;
+  padding:8px 10px;
+  border:1px solid #e5e5e5;
+  border-radius:12px;
+  font-size:14px;
+  font-weight:900;
+  font-variant-numeric: tabular-nums;
+}
+
+.btns{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  margin-left:auto;
+}
+
+button{
+  border:1px solid #e5e5e5;
+  background:#fff;
+  padding:10px 12px;
+  border-radius:14px;
+  font-weight:900;
+  cursor:pointer;
+}
+button:active{ transform: translateY(1px); }
+button.primary{ border-color:#000; }
+
+.smallNote{ font-size:12px; color:#666; }
+</style>
+</head>
+
+<body>
+<div class="wrap">
+<div class="card">
+
+  <div class="topBig">
+    <span id="topDateTime">----</span>
+  </div>
+
+  <div class="dial">
+    <svg viewBox="-6 -6 112 112">
+      <g id="hours"></g>
+
+      <circle cx="50" cy="50" r="40" fill="none" stroke="#e7e7e7" stroke-width="12"/>
+      <g id="arcs"></g>
+      <g id="labels"></g>
+
+      <line id="hand" x1="50" y1="50" x2="50" y2="12" stroke="#000" stroke-width="0.9"/>
+      <polygon id="arrow" points="0,-2 -1.6,1.6 1.6,1.6" fill="#000"/>
+
+      <g id="centerInfo">
+        <circle cx="50" cy="50" r="17" fill="#fff" opacity="0.95"/>
+        <circle cx="50" cy="50" r="2.2" fill="#fff"/>
+        <text id="centerLabel" x="50" y="46" text-anchor="middle" fill="#000" font-size="5" font-weight="900">-</text>
+        <text id="centerRange" x="50" y="53" text-anchor="middle" fill="#000" font-size="4.6" font-weight="800"
+              style="font-variant-numeric:tabular-nums">--:--~--:--</text>
+      </g>
+    </svg>
+  </div>
+
+  <!-- ✅ 타이머 (시/분 입력 + HH:MM:SS 표시) -->
+  <div class="timerBox">
+    <div class="timerTop">
+      <div class="timerTitle">타이머</div>
+      <div class="timerDisplay" id="timerDisplay">00:25:00</div>
+    </div>
+
+    <div class="progress" aria-label="timer progress">
+      <div id="timerBar"></div>
+    </div>
+
+    <div class="timerControls">
+      <div class="timerLeft">
+        <div class="field">
+          <label for="timerHours">시</label>
+          <input id="timerHours" type="number" min="0" max="99" step="1" value="0" inputmode="numeric"/>
+        </div>
+        <div class="field">
+          <label for="timerMinutes">분</label>
+          <input id="timerMinutes" type="number" min="0" max="59" step="1" value="25" inputmode="numeric"/>
+        </div>
+      </div>
+
+      <div class="btns">
+        <button class="primary" id="btnStart">시작</button>
+        <button id="btnPause">일시정지</button>
+        <button id="btnReset">리셋</button>
+      </div>
+    </div>
+
+
+  </div>
+
+</div>
+</div>
+
+<script>
+/* ===== 계획표 ===== */
+const R_RING = 40;
+const NEEDLE_LEN = R_RING - 2;
+
+const SEGMENTS = [
+  {start:"04:15", end:"04:30", label:"기상", color:"#FF8A00"},
+  {start:"04:30", end:"06:30", label:"공부", color:"#5BC0FF"},
+  {start:"06:30", end:"09:30", label:"육아/가사", color:"#FFD400"},
+  {start:"09:30", end:"10:30", label:"공부", color:"#5BC0FF"},
+  {start:"10:30", end:"14:00", label:"육아/가사", color:"#FFD400"},
+  {start:"14:00", end:"15:30", label:"공부", color:"#5BC0FF"},
+  {start:"15:30", end:"20:30", label:"육아/가사", color:"#FFD400"},
+  {start:"20:30", end:"21:00", label:"취침준비", color:"#0B2A6F"},
+  {start:"21:00", end:"04:15", label:"수면", color:"#7A3FF2"},
+];
+
+const DOW=["일","월","화","수","목","금","토"];
+
+const arcsG=document.getElementById("arcs");
+const labelsG=document.getElementById("labels");
+const hoursG=document.getElementById("hours");
+const hand=document.getElementById("hand");
+const arrow=document.getElementById("arrow");
+const centerLabel=document.getElementById("centerLabel");
+const centerRange=document.getElementById("centerRange");
+const topDateTime=document.getElementById("topDateTime");
+
+function toMin(t){const[a,b]=t.split(":").map(Number);return a*60+b;}
+function pad(n){return String(n).padStart(2,"0");}
+function fracToRad(f){return f*2*Math.PI-Math.PI/2;}
+
+function arcPath(s,e){
+  let d=e-s; if(d<=0)d+=1;
+  const a0=fracToRad(s), a1=fracToRad(e);
+  const x0=50+R_RING*Math.cos(a0), y0=50+R_RING*Math.sin(a0);
+  const x1=50+R_RING*Math.cos(a1), y1=50+R_RING*Math.sin(a1);
+  return `M ${x0} ${y0} A ${R_RING} ${R_RING} 0 ${d>0.5?1:0} 1 ${x1} ${y1}`;
+}
+
+function buildPlanner(){
+  hoursG.innerHTML=""; arcsG.innerHTML=""; labelsG.innerHTML="";
+  for(let h=1;h<=24;h++){
+    const f=(h%24)/24, a=fracToRad(f);
+    const x=50+50*Math.cos(a), y=50+50*Math.sin(a);
+    hoursG.innerHTML+=`<text x="${x}" y="${y}" text-anchor="middle"
+      dominant-baseline="middle" fill="#111" opacity=".7" font-size="3.2">${h}</text>`;
+  }
+
+  SEGMENTS.forEach(s=>{
+    const a=toMin(s.start)/1440, b=toMin(s.end)/1440;
+    if(b>a) arcsG.innerHTML+=`<path d="${arcPath(a,b)}" stroke="${s.color}" stroke-width="14" fill="none"/>`;
+    else{
+      arcsG.innerHTML+=`<path d="${arcPath(a,1)}" stroke="${s.color}" stroke-width="14" fill="none"/>`;
+      arcsG.innerHTML+=`<path d="${arcPath(0,b)}" stroke="${s.color}" stroke-width="14" fill="none"/>`;
+    }
+    const mid=((toMin(s.start)+(toMin(s.end)-toMin(s.start)+1440)%1440/2)%1440)/1440;
+    const ang=fracToRad(mid);
+    const x=50+40*Math.cos(ang), y=50+40*Math.sin(ang);
+    labelsG.innerHTML+=`<text x="${x}" y="${y}" fill="#fff" stroke="rgba(0,0,0,.35)"
+      stroke-width=".35" paint-order="stroke fill"
+      font-size="4" font-weight="800"
+      text-anchor="middle" dominant-baseline="middle">${s.label}</text>`;
+  });
+}
+
+/* ===== 타이머 ===== */
+const timerDisplay = document.getElementById("timerDisplay");
+const timerBar = document.getElementById("timerBar");
+const timerHoursInput = document.getElementById("timerHours");
+const timerMinutesInput = document.getElementById("timerMinutes");
+const btnStart = document.getElementById("btnStart");
+const btnPause = document.getElementById("btnPause");
+const btnReset = document.getElementById("btnReset");
+
+let timerDurationMs = 25 * 60 * 1000;
+let timerRemainingMs = timerDurationMs;
+let timerRunning = false;
+let timerLastTick = null;
+
+function clampInt(v, min, max, fallback){
+  const n = Number(v);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, Math.floor(n)));
+}
+
+function formatHHMMSS(ms){
+  const totalSec = Math.max(0, Math.floor(ms/1000));
+  const hh = Math.floor(totalSec/3600);
+  const mm = Math.floor((totalSec%3600)/60);
+  const ss = totalSec%60;
+  return `${pad(hh)}:${pad(mm)}:${pad(ss)}`;
+}
+
+function syncTimerUI(){
+  timerDisplay.textContent = formatHHMMSS(timerRemainingMs);
+  const pct = timerDurationMs > 0 ? (1 - (timerRemainingMs / timerDurationMs)) * 100 : 0;
+  timerBar.style.width = `${Math.min(100, Math.max(0, pct))}%`;
+}
+
+function applyDurationFromInputs(reset=true){
+  const hh = clampInt(timerHoursInput.value, 0, 99, 0);
+  const mm = clampInt(timerMinutesInput.value, 0, 59, 25);
+  timerHoursInput.value = String(hh);
+  timerMinutesInput.value = String(mm);
+
+  const totalMs = (hh*3600 + mm*60) * 1000;
+  timerDurationMs = Math.max(1000, totalMs); // 최소 1초
+  if (reset){
+    timerRemainingMs = timerDurationMs;
+    timerRunning = false;
+    timerLastTick = null;
+  }
+  syncTimerUI();
+}
+
+btnStart.addEventListener("click", () => {
+  if (timerRemainingMs <= 0) applyDurationFromInputs(true);
+  timerRunning = true;
+  timerLastTick = performance.now();
+});
+
+btnPause.addEventListener("click", () => {
+  timerRunning = false;
+  timerLastTick = null;
+});
+
+btnReset.addEventListener("click", () => {
+  applyDurationFromInputs(true);
+});
+
+/* ✅ 입력 바꾸면 즉시 반영 + 자동 리셋 */
+function onTimeInputChange(){
+  applyDurationFromInputs(true);
+}
+timerHoursInput.addEventListener("input", onTimeInputChange);
+timerMinutesInput.addEventListener("input", onTimeInputChange);
+
+function tickTimer(){
+  if (timerRunning){
+    const now = performance.now();
+    if (timerLastTick != null){
+      const dt = now - timerLastTick;
+      timerRemainingMs -= dt;
+      if (timerRemainingMs <= 0){
+        timerRemainingMs = 0;
+        timerRunning = false;
+        timerLastTick = null;
+      } else {
+        timerLastTick = now;
+      }
+      syncTimerUI();
+    } else {
+      timerLastTick = now;
+    }
+  }
+  requestAnimationFrame(tickTimer);
+}
+
+/* ===== 실시간 업데이트 ===== */
+function updatePlannerAndClock(){
+  const n=new Date();
+  topDateTime.textContent =
+    `${n.getFullYear()}-${pad(n.getMonth()+1)}-${pad(n.getDate())} `
+  + `${DOW[n.getDay()]} `
+  + `${pad(n.getHours())}:${pad(n.getMinutes())}:${pad(n.getSeconds())}`;
+
+  const m=n.getHours()*60+n.getMinutes();
+  const idx=SEGMENTS.findIndex(s=>{
+    const a=toMin(s.start), b=toMin(s.end);
+    return b>a ? (m>=a&&m<b):(m>=a||m<b);
+  });
+  if(idx>=0){
+    centerLabel.textContent=SEGMENTS[idx].label;
+    centerRange.textContent=`${SEGMENTS[idx].start}~${SEGMENTS[idx].end}`;
+  }
+
+  const frac=(n.getHours()*3600+n.getMinutes()*60+n.getSeconds())/86400;
+  const ang=fracToRad(frac);
+  const deg=ang*180/Math.PI+90;
+
+  const x=50+NEEDLE_LEN*Math.cos(ang);
+  const y=50+NEEDLE_LEN*Math.sin(ang);
+
+  hand.setAttribute("x2",x);
+  hand.setAttribute("y2",y);
+  arrow.setAttribute("transform",`translate(${x} ${y}) rotate(${deg})`);
+
+  requestAnimationFrame(updatePlannerAndClock);
+}
+
+/* init */
+buildPlanner();
+applyDurationFromInputs(true);
+tickTimer();
+updatePlannerAndClock();
+</script>
+</body>
+</html>
