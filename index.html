@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>원형 실시간 계획표</title>
+
+<style>
+:root{ --size: min(90vw, 380px); }
+*{ box-sizing:border-box; }
+
+body{
+  margin:0;
+  min-height:100vh;
+  display:flex;
+  justify-content:center;
+  align-items:flex-start;
+  font-family: system-ui, -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  background:#fff;
+  padding-top: env(safe-area-inset-top);
+}
+
+.wrap{ width:100%; max-width:560px; padding:16px; }
+
+.card{
+  border:1px solid #eee;
+  border-radius:18px;
+  padding:14px;
+  box-shadow:0 6px 20px rgba(0,0,0,.06);
+}
+
+.topBig{
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  margin-bottom:12px;
+}
+.topBig span{
+  font-weight:900;
+  font-size:clamp(18px, 5vw, 28px);
+  color:#000;
+  font-variant-numeric: tabular-nums;
+  white-space:nowrap;
+}
+
+.dial{ width:var(--size); height:var(--size); margin:0 auto; }
+svg{ width:100%; height:100%; display:block; }
+
+.timerBox{
+  margin-top:14px;
+  border:1px solid #f0f0f0;
+  border-radius:16px;
+  padding:12px;
+  display:grid;
+  gap:10px;
+}
+.timerTop{
+  display:flex;
+  justify-content:space-between;
+  align-items:baseline;
+}
+.timerTitle{ font-weight:900; font-size:16px; }
+.timerDisplay{
+  font-weight:900;
+  font-size:28px;
+  font-variant-numeric: tabular-nums;
+}
+.progress{
+  height:10px;
+  border-radius:999px;
+  background:#f1f1f1;
+  overflow:hidden;
+}
+.progress > div{ height:100%; width:0%; background:#000; }
+
+.timerControls{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+  flex-wrap:wrap;
+}
+.field{ display:flex; gap:6px; align-items:center; }
+.field label{ font-weight:800; font-size:14px; }
+.field input{
+  width:70px;
+  padding:8px 10px;
+  border:1px solid #e5e5e5;
+  border-radius:12px;
+  font-weight:900;
+}
+.btns{ display:flex; gap:8px; }
+button{
+  border:1px solid #e5e5e5;
+  background:#fff;
+  padding:10px 12px;
+  border-radius:14px;
+  font-weight:900;
+  cursor:pointer;
+}
+button.primary{ border-color:#000; }
+</style>
+</head>
+
+<body>
+<div class="wrap">
+  <div class="card">
+
+    <div class="topBig">
+      <span id="topDateTime">----</span>
+    </div>
+
+    <div class="dial">
+      <svg viewBox="-6 -6 112 112">
+
+        <g id="hours"></g>
+
+        <circle cx="50" cy="50" r="40" fill="none" stroke="#e7e7e7" stroke-width="12"/>
+
+        <g id="arcs"></g>
+        <g id="labels"></g>
+
+        <line id="hand" x1="50" y1="50" x2="50" y2="12" stroke="#000" stroke-width="0.9"/>
+        <polygon id="arrow" points="0,-2 -1.6,1.6 1.6,1.6" fill="#000"/>
+
+        <!-- 중앙 정보 -->
+        <g id="centerInfo">
+          <circle cx="50" cy="50" r="18" fill="#fff" opacity="0.95"/>
+          <circle cx="50" cy="50" r="2.2" fill="#fff"/>
+
+          <text id="centerLabel" x="50" y="41.5"
+            text-anchor="middle" fill="#000"
+            font-size="5.6" font-weight="900">-</text>
+
+          <text id="centerRange" x="50" y="48.8"
+            text-anchor="middle" fill="#000"
+            font-size="5.0" font-weight="800"
+            style="font-variant-numeric:tabular-nums">--:--~--:--</text>
+
+          <text id="centerRemain" x="50" y="56.2"
+            text-anchor="middle" fill="#555"
+            font-size="3.9" font-weight="700"></text>
+
+          <text id="centerToSleep" x="50" y="61.9"
+            text-anchor="middle" fill="#777"
+            font-size="3.6" font-weight="700"></text>
+        </g>
+
+      </svg>
+    </div>
+
+    <!-- 하단 수동 타이머 -->
+    <div class="timerBox">
+      <div class="timerTop">
+        <div class="timerTitle">타이머</div>
+        <div class="timerDisplay" id="timerDisplay">00:25:00</div>
+      </div>
+
+      <div class="progress"><div id="timerBar"></div></div>
+
+      <div class="timerControls">
+        <div style="display:flex; gap:10px;">
+          <div class="field">
+            <label>시</label>
+            <input id="timerHours" type="number" min="0" max="99" value="0">
+          </div>
+          <div class="field">
+            <label>분</label>
+            <input id="timerMinutes" type="number" min="0" max="59" value="25">
+          </div>
+        </div>
+        <div class="btns">
+          <button class="primary" id="btnStart">시작</button>
+          <button id="btnPause">정지</button>
+          <button id="btnReset">리셋</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+/* ===== 스케줄 ===== */
+const SEGMENTS = [
+  {start:"05:00", end:"05:30", label:"기상",     color:"#FF8A00"},
+  {start:"05:30", end:"06:30", label:"공부",     color:"#5BC0FF"},
+  {start:"06:30", end:"09:30", label:"육아/가사", color:"#FFD400"},
+  {start:"09:30", end:"11:00", label:"공부",     color:"#5BC0FF"},
+  {start:"11:00", end:"13:30", label:"육아/가사", color:"#FFD400"},
+  {start:"13:30", end:"15:00", label:"공부",     color:"#5BC0FF"},
+  {start:"15:00", end:"21:00", label:"육아/가사", color:"#FFD400"},
+  {start:"21:00", end:"22:00", label:"취침준비", color:"#0B2A6F"},
+  {start:"22:00", end:"05:00", label:"수면",     color:"#7A3FF2"},
+];
+
+const SLEEP_START = "22:00"; // 중앙에 표시할 “수면 시작(22시)까지”
+const DOW = ["일","월","화","수","목","금","토"];
+const R = 40;
+
+const arcsG = document.getElementById("arcs");
+const labelsG = document.getElementById("labels");
+const hoursG = document.getElementById("hours");
+
+const centerLabel = document.getElementById("centerLabel");
+const centerRange = document.getElementById("centerRange");
+const centerRemain = document.getElementById("centerRemain");
+const centerToSleep = document.getElementById("centerToSleep");
+
+const hand = document.getElementById("hand");
+const arrow = document.getElementById("arrow");
+const topDateTime = document.getElementById("topDateTime");
+
+const toMin = (t) => { const [a,b] = t.split(":").map(Number); return a*60+b; };
+const pad = (n) => String(n).padStart(2,"0");
+const fracToRad = (f) => f*2*Math.PI - Math.PI/2;
+
+function arcPath(startFrac, endFrac){
+  let d = endFrac - startFrac;
+  if(d <= 0) d += 1;
+  const a0 = fracToRad(startFrac), a1 = fracToRad(endFrac);
+  const large = d > 0.5 ? 1 : 0;
+  return `M ${50+R*Math.cos(a0)} ${50+R*Math.sin(a0)}
+          A ${R} ${R} 0 ${large} 1 ${50+R*Math.cos(a1)} ${50+R*Math.sin(a1)}`;
+}
+
+function build(){
+  // 1~24 숫자
+  for(let h=1; h<=24; h++){
+    const a = fracToRad(h/24);
+    hoursG.insertAdjacentHTML("beforeend",
+      `<text x="${50+50*Math.cos(a)}" y="${50+50*Math.sin(a)}"
+        text-anchor="middle" dominant-baseline="middle"
+        fill="#111" opacity=".7" font-size="3.2">${h}</text>`);
+  }
+
+  // 띠 + 라벨
+  SEGMENTS.forEach(s=>{
+    const aMin = toMin(s.start), bMin = toMin(s.end);
+    const a = aMin/1440, b = bMin/1440;
+
+    // 띠(자정 넘어가면 두 조각)
+    arcsG.insertAdjacentHTML("beforeend",
+      `<path d="${arcPath(a, (b>a)?b:1)}" stroke="${s.color}" stroke-width="14" fill="none"/>`);
+    if(b < a){
+      arcsG.insertAdjacentHTML("beforeend",
+        `<path d="${arcPath(0, b)}" stroke="${s.color}" stroke-width="14" fill="none"/>`);
+    }
+
+    // 라벨 위치(구간 중앙각)
+    const dur = (bMin - aMin + 1440) % 1440;         // 0~1439
+    const midMin = (aMin + dur/2) % 1440;
+    const mid = midMin / 1440;
+    const ang = fracToRad(mid);
+
+    labelsG.insertAdjacentHTML("beforeend",
+      `<text x="${50+40*Math.cos(ang)}" y="${50+40*Math.sin(ang)}"
+        fill="#fff" stroke="rgba(0,0,0,.35)" stroke-width=".35"
+        paint-order="stroke fill" font-size="4" font-weight="800"
+        text-anchor="middle" dominant-baseline="middle">${s.label}</text>`);
+  });
+}
+
+function formatHM(mins){
+  const h = Math.floor(mins/60);
+  const m = mins % 60;
+  return `${h>0 ? h+"시간 " : ""}${m}분`;
+}
+
+function update(){
+  const n = new Date();
+  topDateTime.textContent =
+    `${n.getFullYear()}-${pad(n.getMonth()+1)}-${pad(n.getDate())} ${DOW[n.getDay()]} ` +
+    `${pad(n.getHours())}:${pad(n.getMinutes())}:${pad(n.getSeconds())}`;
+
+  const nowMin = n.getHours()*60 + n.getMinutes();
+
+  const idx = SEGMENTS.findIndex(s=>{
+    const a = toMin(s.start), b = toMin(s.end);
+    return (b>a) ? (nowMin>=a && nowMin<b) : (nowMin>=a || nowMin<b);
+  });
+
+  if(idx >= 0){
+    const seg = SEGMENTS[idx];
+    centerLabel.textContent = seg.label;
+    centerRange.textContent = `${seg.start}~${seg.end}`;
+
+    // (1) 현재 구간 종료까지 남은 시간
+    let remainSeg = toMin(seg.end) - nowMin;
+    if(remainSeg < 0) remainSeg += 1440;
+    centerRemain.textContent = `남은 시간 ${formatHM(remainSeg)}`;
+
+    // (2) 22:00(수면 시작)까지 남은 시간
+    let remainSleep = toMin(SLEEP_START) - nowMin;
+    if(remainSleep < 0) remainSleep += 1440;
+    centerToSleep.textContent = `22:00까지 ${formatHM(remainSleep)} 남음`;
+  }
+
+  // 바늘/화살표
+  const frac = (n.getHours()*3600 + n.getMinutes()*60 + n.getSeconds()) / 86400;
+  const ang = fracToRad(frac);
+
+  const x = 50 + (R-2)*Math.cos(ang);
+  const y = 50 + (R-2)*Math.sin(ang);
+
+  hand.setAttribute("x2", x);
+  hand.setAttribute("y2", y);
+  arrow.setAttribute("transform", `translate(${x} ${y}) rotate(${ang*180/Math.PI+90})`);
+
+  requestAnimationFrame(update);
+}
+
+/* ===== 하단 수동 타이머 ===== */
+let dur = 25*60*1000;
+let rem = dur;
+let run = false;
+let last = 0;
+
+const tDisp = document.getElementById("timerDisplay");
+const tBar  = document.getElementById("timerBar");
+const hIn   = document.getElementById("timerHours");
+const mIn   = document.getElementById("timerMinutes");
+
+function fmt(ms){
+  const s = Math.max(0, Math.floor(ms/1000));
+  return `${pad(Math.floor(s/3600))}:${pad(Math.floor(s%3600/60))}:${pad(s%60)}`;
+}
+function syncTimer(){
+  tDisp.textContent = fmt(rem);
+  tBar.style.width = `${100*(1 - rem/dur)}%`;
+}
+function applyTimer(){
+  dur = (+hIn.value*3600 + +mIn.value*60) * 1000;
+  if(dur <= 0) dur = 1000;
+  rem = dur;
+  run = false;
+  last = 0;
+  syncTimer();
+}
+
+document.getElementById("btnStart").onclick = () => { run = true; last = performance.now(); };
+document.getElementById("btnPause").onclick = () => { run = false; };
+document.getElementById("btnReset").onclick = applyTimer;
+
+hIn.oninput = mIn.oninput = applyTimer;
+
+function tick(){
+  if(run){
+    const now = performance.now();
+    if(last){
+      rem -= (now - last);
+      if(rem <= 0){
+        rem = 0;
+        run = false;
+      }
+    }
+    last = now;
+    syncTimer();
+  }
+  requestAnimationFrame(tick);
+}
+
+// 시작
+build();
+applyTimer();
+tick();
+update();
+</script>
+</body>
+</html>
